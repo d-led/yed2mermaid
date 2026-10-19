@@ -48,10 +48,10 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Example output is current
+      - name: Generated files are current
         run: |
           ./scripts/demo.sh
-          git diff --exit-code -- example
+          git diff --exit-code -- example docs
 
   binaries:
     needs: checks

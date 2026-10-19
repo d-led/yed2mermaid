@@ -281,19 +281,25 @@ test "--images= is a missing value" {
     try testing.expectError(error.MissingValue, parse(&.{ "--images=", "chart.graphml" }));
 }
 
-test "the README shows the help text exactly" {
-    const readme = try std.Io.Dir.cwd().readFileAlloc(testing.io, "README.md", testing.allocator, .limited(1 << 20));
-    defer testing.allocator.free(readme);
+test "the command line reference is generated from the help text" {
+    var document: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer document.deinit();
 
-    try testing.expectEqualStrings(help_text, try usageBlock(readme));
+    try document.writer.writeAll(command_line_note);
+    try document.writer.writeAll("\n");
+    try document.writer.writeAll("```text\n");
+    try document.writer.writeAll(help_text);
+    try document.writer.writeAll("```\n");
+
+    try testing.expect(std.mem.indexOf(u8, document.written(), "Usage:") != null);
+    try std.Io.Dir.cwd().writeFile(testing.io, .{ .sub_path = "docs/cli.md", .data = document.written() });
 }
 
-/// The first `text` block of the README holds the usage section.
-fn usageBlock(readme: []const u8) ![]const u8 {
-    const opening = "```text\n";
-    const start = std.mem.indexOf(u8, readme, opening) orelse return error.MissingUsageBlock;
-    const body = readme[start + opening.len ..];
-    const end = std.mem.indexOf(u8, body, "```") orelse return error.MissingUsageBlock;
-    if (!std.mem.endsWith(u8, body[0..end], "\n")) return error.MissingUsageBlock;
-    return body[0..end];
-}
+const command_line_note =
+    \\# Command line
+    \\
+    \\Generated from `yed2mermaid --help` by the test suite, so it cannot drift;
+    \\the text lives in `src/cli.zig`. Back to the [README](../README.md) and
+    \\[usage](usage.md).
+    \\
+;
