@@ -19,14 +19,14 @@ flowchart TD
   end
   subgraph n3["Group 4"]
     direction RL
-    n3_n0@{ img: "pictures/n3_n0.svg", label: "person 1", pos: "b", h: 67, w: 57 }
-    n3_n1@{ img: "pictures/n3_n1.svg", label: "person 2", pos: "b", h: 70, w: 57 }
+    n3_n0@{ img: "pictures/n3_n0.svg", label: "person 1", pos: "b", h: 67, constraint: "on" }
+    n3_n1@{ img: "pictures/n3_n1.svg", label: "person 2", pos: "b", h: 70, constraint: "on" }
     n3_n0 <-- "#8203;" --> n3_n1
   end
   %% yed2mermaid: y:UMLClassNode is drawn as rectangle (node n4)
   n4["Class<br/>─────<br/>a<br/>b<br/>c<br/>─────<br/>test<br/>ask"]
   n5(["Use Case"])
-  n6@{ img: "pictures/n6.png", label: "miniature image", pos: "b", h: 107, w: 97 }
+  n6@{ img: "pictures/n6.png", label: "miniature image", pos: "b", h: 107, constraint: "on" }
   n0 -- "node 1 - group 1" --> n1
   n2_n1 -. "node 3- node 4" .-> n1_n0
   n6 -- "#8203;" --> n0

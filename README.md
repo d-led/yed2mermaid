@@ -167,7 +167,10 @@ SVG, base64 resources become `.png`, `.jpg` or `.gif`. A node that points at an
 image by URL is used as it is, with nothing written out.
 
 Pictures are the one thing whose size is copied: a Mermaid image node has no
-intrinsic size, and the drawing's proportions are the honest answer.
+intrinsic size. Only the height is emitted, together with `constraint: "on"`;
+Mermaid then takes the width from the picture's own aspect ratio. Without the
+constraint it stretches the image to the node's wrapping width (200 px by
+default) whenever the node has a label, which squashes any picture.
 
 ## How the mapping is done
 

@@ -150,9 +150,11 @@ const Emitter = struct {
         }
     }
 
-    /// A picture becomes an image node whose size is the size it had in the
-    /// drawing: the picture is the one thing whose proportions Mermaid would
-    /// otherwise have to guess.
+    /// A picture becomes an image node. `constraint: "on"` is what keeps its
+    /// proportions: Mermaid stretches the image to the node width whenever the
+    /// node has a label (the width becomes the wrapping width), and only with
+    /// the constraint does it derive the width from the image's own aspect
+    /// ratio. The height is then the one the picture had in the drawing.
     fn emitImage(
         self: *Emitter,
         id: []const u8,
@@ -167,13 +169,10 @@ const Emitter = struct {
         try self.writer.writeAll("\", label: \"");
         try writeLabel(self.writer, node.label);
         try self.writer.writeAll("\", pos: \"b\"");
-        if (node.rect.width > 0 and node.rect.height > 0) {
-            try self.writer.print(", h: {d}, w: {d}", .{
-                @as(i32, @intFromFloat(@round(node.rect.height))),
-                @as(i32, @intFromFloat(@round(node.rect.width))),
-            });
+        if (node.rect.height > 0) {
+            try self.writer.print(", h: {d}", .{@as(i32, @intFromFloat(@round(node.rect.height)))});
         }
-        try self.writer.writeAll(" }\n");
+        try self.writer.writeAll(", constraint: \"on\" }\n");
     }
 
     fn pictureReference(self: *Emitter, node: *const model.Node) Error!?[]const u8 {
@@ -822,7 +821,7 @@ test "the filler can be turned off" {
     try testing.expect(std.mem.indexOf(u8, text, "a <--> b") != null);
 }
 
-test "a picture becomes an image node of the size it was drawn" {
+test "a picture becomes an image node of the height it was drawn" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     var diag = diagnostics.Diagnostics.init(arena.allocator());
@@ -832,7 +831,7 @@ test "a picture becomes an image node of the size it was drawn" {
     });
     const text = try render(arena.allocator(), .{ .items = items, .edges = &.{} }, .{ .images = "assets" }, &diag);
 
-    try testing.expect(std.mem.indexOf(u8, text, "logo@{ img: \"assets/logo.png\", label: \"Logo\", pos: \"b\", h: 30, w: 60 }") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "logo@{ img: \"assets/logo.png\", label: \"Logo\", pos: \"b\", h: 30, constraint: \"on\" }") != null);
     try testing.expect(std.mem.indexOf(u8, text, "fill:#F8F8FF") == null);
 }
 
