@@ -27,24 +27,31 @@ pub const help_text =
     \\
     \\Options:
     \\  -o, --output <path>       write to <path> instead of stdout
-    \\  -d, --direction <dir>     auto (default), td, lr, bt, rl
-    \\      --style <mode>        yed (default) or none
+    \\  -d, --direction <dir>     auto (default) follows the drawing; td, lr, bt
+    \\                            and rl force one everywhere
+    \\      --style <mode>        yed (default) copies fills and lines; none drops
+    \\                            them
     \\      --plain               shorthand for --style none
-    \\      --layout <name>       elk (default), dagre, renderer-default
+    \\      --layout <name>       elk (default), dagre, or renderer-default to
+    \\                            leave the layout unset
     \\      --config <json|file>  Mermaid config merged over the defaults
     \\      --title <text>        title in the front-matter
     \\      --no-front-matter     omit the front-matter block
     \\      --links               emit click lines for yEd node URLs
-    \\      --images[=<dir>]      write the pictures the drawing embeds into <dir> and point
-    \\                            the diagram at them; without <dir> they go to
-    \\                            <output>-images ("auto" says the same)
-    \\      --edge-filler         give label-less edges invisible labels so they keep a visible shaft (default)
-    \\      --no-edge-filler      emit label-less edges exactly as drawn, which can shrink them to arrow heads
+    \\      --images[=<dir>]      write the pictures the drawing embeds into <dir>
+    \\                            and point the diagram at them; without <dir> they
+    \\                            go to <output>-images ("auto" says the same)
+    \\      --edge-filler         give label-less edges an invisible label so they
+    \\                            keep a visible shaft (default)
+    \\      --no-edge-filler      emit label-less edges as drawn; a short one may
+    \\                            shrink to its arrow heads
     \\      --quiet               do not print warnings
     \\  -h, --help                show this help
     \\  -V, --version             show the version
     \\
     \\Reads from stdin when the input is "-".
+    \\Exit status: 0 on success, 1 for a usage error, 2 for an unreadable input
+    \\or an unwritable output.
     \\
 ;
 
@@ -272,4 +279,21 @@ test "--images=auto is the same as --images" {
 
 test "--images= is a missing value" {
     try testing.expectError(error.MissingValue, parse(&.{ "--images=", "chart.graphml" }));
+}
+
+test "the README shows the help text exactly" {
+    const readme = try std.Io.Dir.cwd().readFileAlloc(testing.io, "README.md", testing.allocator, .limited(1 << 20));
+    defer testing.allocator.free(readme);
+
+    try testing.expectEqualStrings(help_text, try usageBlock(readme));
+}
+
+/// The first `text` block of the README holds the usage section.
+fn usageBlock(readme: []const u8) ![]const u8 {
+    const opening = "```text\n";
+    const start = std.mem.indexOf(u8, readme, opening) orelse return error.MissingUsageBlock;
+    const body = readme[start + opening.len ..];
+    const end = std.mem.indexOf(u8, body, "```") orelse return error.MissingUsageBlock;
+    if (!std.mem.endsWith(u8, body[0..end], "\n")) return error.MissingUsageBlock;
+    return body[0..end];
 }

@@ -169,10 +169,12 @@ const Emitter = struct {
         try self.writer.writeAll("\", label: \"");
         try writeLabel(self.writer, node.label);
         try self.writer.writeAll("\", pos: \"b\"");
+        // Without a height there is nothing to constrain: leave the node the
+        // way Mermaid sizes it.
         if (node.rect.height > 0) {
-            try self.writer.print(", h: {d}", .{@as(i32, @intFromFloat(@round(node.rect.height)))});
+            try self.writer.print(", h: {d}, constraint: \"on\"", .{@as(i32, @intFromFloat(@round(node.rect.height)))});
         }
-        try self.writer.writeAll(", constraint: \"on\" }\n");
+        try self.writer.writeAll(" }\n");
     }
 
     fn pictureReference(self: *Emitter, node: *const model.Node) Error!?[]const u8 {
@@ -861,6 +863,19 @@ test "a picture that is not extracted is left out with a comment" {
     try testing.expect(std.mem.indexOf(u8, text, "%% yed2mermaid: the picture of node logo is left out") != null);
     try testing.expect(std.mem.indexOf(u8, text, "@{ img:") == null);
     try testing.expect(std.mem.indexOf(u8, text, "style logo fill:#F8F8FF") != null);
+}
+
+test "a picture without a drawn height is left to Mermaid to size" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    var node = pictureNode(.{ .content = "bytes", .extension = "png" });
+    node.rect = .{};
+    const items = try arena.allocator().dupe(model.Item, &.{.{ .node = node }});
+    const text = try render(arena.allocator(), .{ .items = items, .edges = &.{} }, .{ .images = "assets" }, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "logo@{ img: \"assets/logo.png\", label: \"Logo\", pos: \"b\" }") != null);
 }
 
 test "a subgraph drawn horizontally gets its own direction" {
