@@ -21,13 +21,9 @@ $ brew install d-led/d-led/yed2mermaid      # macOS and Linux
 Release archives come with a `SHA256SUMS` file; the published `.rb` formula is
 generated from it.
 
-What you draw in yEd:
-
-![a flowchart in yEd](docs/img/yed.png)
-
-What comes out, rendered as Mermaid:
-
-![the same flowchart as Mermaid text rendered by Mermaid](docs/img/mermaid.png)
+| What you draw in yEd | What comes out, rendered as Mermaid |
+|---|---|
+| <img src="docs/img/yed.png" width="400" alt="a flowchart drawn in yEd"> | <img src="docs/img/mermaid.png" width="400" alt="the same flowchart rendered by Mermaid"> |
 
 The command above turns [example/example.graphml](example/example.graphml) into
 [example/example.mmd](example/example.mmd). To look at the result without a
