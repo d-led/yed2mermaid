@@ -21,7 +21,7 @@ pub const Error = error{
 pub const RenderOptions = struct {
     styling: bool = true,
     links: bool = false,
-    edge_filler: bool = false,
+    edge_filler: bool = true,
     direction: options.Direction = .auto,
 };
 
@@ -689,11 +689,11 @@ test "a double arrow becomes a bidirectional link" {
         .{ .node = testNode("b", "B", .{}) },
     });
     const edges = try arena.allocator().dupe(model.Edge, &.{
-        .{ .id = "e", .source = "a", .target = "b", .source_arrow = .standard, .target_arrow = .standard },
+        .{ .id = "e", .source = "a", .target = "b", .label = "peer", .source_arrow = .standard, .target_arrow = .standard },
     });
     const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{}, &diag);
 
-    try testing.expect(std.mem.indexOf(u8, text, "a <--> b") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "a <-- \"peer\" --> b") != null);
 }
 
 test "the direction follows the drawing when asked to auto" {
@@ -705,24 +705,7 @@ test "the direction follows the drawing when asked to auto" {
     try testing.expect(std.mem.startsWith(u8, text, "flowchart TD\n"));
 }
 
-test "an invisible filler gives label-less edges room" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena.deinit();
-    var diag = diagnostics.Diagnostics.init(arena.allocator());
-
-    const items = try arena.allocator().dupe(model.Item, &.{
-        .{ .node = testNode("a", "A", .{}) },
-        .{ .node = testNode("b", "B", .{}) },
-    });
-    const edges = try arena.allocator().dupe(model.Edge, &.{
-        .{ .id = "e", .source = "a", .target = "b", .source_arrow = .standard, .target_arrow = .standard },
-    });
-    const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{ .edge_filler = true }, &diag);
-
-    try testing.expect(std.mem.indexOf(u8, text, "a <-- \"#8203;\" --> b") != null);
-}
-
-test "without the filler a label-less edge stays bare" {
+test "label-less edges get an invisible label so they do not collapse" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     var diag = diagnostics.Diagnostics.init(arena.allocator());
@@ -735,6 +718,23 @@ test "without the filler a label-less edge stays bare" {
         .{ .id = "e", .source = "a", .target = "b", .source_arrow = .standard, .target_arrow = .standard },
     });
     const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{}, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "a <-- \"#8203;\" --> b") != null);
+}
+
+test "the filler can be turned off" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = testNode("a", "A", .{}) },
+        .{ .node = testNode("b", "B", .{}) },
+    });
+    const edges = try arena.allocator().dupe(model.Edge, &.{
+        .{ .id = "e", .source = "a", .target = "b", .source_arrow = .standard, .target_arrow = .standard },
+    });
+    const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{ .edge_filler = false }, &diag);
 
     try testing.expect(std.mem.indexOf(u8, text, "a <--> b") != null);
 }

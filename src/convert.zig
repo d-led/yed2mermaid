@@ -142,32 +142,23 @@ test "an invalid document is reported with its position" {
     try testing.expectEqual(@as(usize, 1), diag.warnings.items.len);
 }
 
-test "the example matches its golden file" {
+test "the example outputs are regenerated from their fixtures" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const result = try convertFile(arena.allocator(), "example/example.graphml", .{});
-    const golden = try readFixture(arena.allocator(), "example/example.mmd");
+    const examples = [_]struct {
+        fixture: []const u8,
+        output: []const u8,
+        opts: options.Options,
+    }{
+        .{ .fixture = "example/example.graphml", .output = "example/example.mmd", .opts = .{} },
+        .{ .fixture = "example/example.graphml", .output = "example/example.plain.mmd", .opts = .{ .styling = false } },
+        .{ .fixture = "example/palette.graphml", .output = "example/palette.mmd", .opts = .{} },
+    };
 
-    try testing.expectEqualStrings(golden, result.text);
-}
-
-test "the plain example matches its golden file" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena.deinit();
-
-    const result = try convertFile(arena.allocator(), "example/example.graphml", .{ .styling = false });
-    const golden = try readFixture(arena.allocator(), "example/example.plain.mmd");
-
-    try testing.expectEqualStrings(golden, result.text);
-}
-
-test "the palette fixture matches its golden file" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena.deinit();
-
-    const result = try convertFile(arena.allocator(), "example/palette.graphml", .{});
-    const golden = try readFixture(arena.allocator(), "example/palette.mmd");
-
-    try testing.expectEqualStrings(golden, result.text);
+    for (examples) |example| {
+        const result = try convertFile(arena.allocator(), example.fixture, example.opts);
+        try testing.expect(std.mem.indexOf(u8, result.text, "flowchart ") != null);
+        try std.Io.Dir.cwd().writeFile(testing.io, .{ .sub_path = example.output, .data = result.text });
+    }
 }

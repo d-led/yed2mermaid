@@ -63,7 +63,7 @@ Zig 0.17 or newer.
 
 ```console
 $ zig build                 # debug binary in zig-out/bin
-$ zig build test            # unit tests and golden files
+$ zig build test            # unit tests, also regenerates the example outputs
 $ zig build run -- example/example.graphml
 $ zig build dist            # release binaries for five targets
 ```
@@ -95,8 +95,8 @@ yed2mermaid [options] <file.graphml|->
       --title <text>        title in the front-matter
       --no-front-matter     omit the front-matter block
       --links               emit click lines for yEd node URLs
-      --edge-filler         give label-less edges invisible labels so they do not collapse
-      --no-edge-filler      keep label-less edges as they are (default)
+      --edge-filler         give label-less edges invisible labels so they keep a visible shaft (default)
+      --no-edge-filler      emit label-less edges exactly as drawn, which can shrink them to arrow heads
       --quiet               do not print warnings
   -h, --help                show this help
   -V, --version             show the version
@@ -166,11 +166,13 @@ key an icon on. Subtype information therefore appears as a comment.
   spacing: `flowchart.nodeSpacing` is a Dagre option, and Mermaid's link-length
   hints (`--->`) are ignored by ELK. The direction heuristic above removes most
   of the sting by laying a sideways group out sideways, but a short edge between
-  two stacked layers can still look stubby. `--edge-filler` adds a zero-width
-  space as the label of every unlabelled edge, which makes Mermaid reserve the
-  same room a real label would: measured on the example, the gap between the two
-  picture nodes grows from 84 px to 138 px. `--layout dagre` is the other way to
-  buy room, at the cost of a much wider diagram.
+  two stacked layers can still look stubby. Every label-less edge therefore
+  carries a zero-width space as its label, which makes Mermaid reserve the same
+  room a real label would: measured on the example, the gap between the two
+  picture nodes grows from 84 px to 138 px, and a bidirectional edge between two
+  adjacent nodes keeps a shaft instead of collapsing into two arrow heads.
+  `--no-edge-filler` restores the bare edges. `--layout dagre` is the other way
+  to buy room, at the cost of a much wider diagram.
 * Gradients (`y:Fill/@color2`) collapse to the first colour.
 * Ports, edge routing, drop shadows, labels positioned outside the node and
   collapsed groups are not reproduced.
@@ -181,15 +183,17 @@ key an icon on. Subtype information therefore appears as a comment.
 
 `example/example.graphml` and `example/palette.graphml` are hand written test
 fixtures. `example/example.mmd`, `example/example.plain.mmd` and
-`example/palette.mmd` are their expected outputs; `scripts/demo.sh` regenerates
-them, and the test suite fails when they disagree.
+`example/palette.mmd` are generated: the test suite rewrites them on every run,
+so they can never go stale, and a change to them shows up as a diff to review
+and commit. `scripts/demo.sh` produces the same files through the installed
+binary.
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` checks formatting, runs the test suite (its summary
-is written to the run page), regenerates the example outputs and fails when they
-differ from the committed ones, then builds the release binaries and uploads
-them as build artifacts.
+is written to the run page), regenerates the example outputs through the CLI and
+fails when the committed ones are out of date, then builds the release binaries
+and uploads them as build artifacts.
 
 `.github/workflows/release.yml` runs only for `v*.*.*` tags. It tests, builds
 the archives (`scripts/package.sh`), publishes them with `SHA256SUMS` and the

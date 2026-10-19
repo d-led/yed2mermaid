@@ -15,7 +15,7 @@ flowchart TD
   subgraph n2["Group 3"]
     n2_n0["Node 2"]
     n2_n1["Node 3"]
-    n2_n1 --> n2_n0
+    n2_n1 -- "#8203;" --> n2_n0
   end
   subgraph n3["Group 4"]
     direction RL
@@ -23,7 +23,7 @@ flowchart TD
     n3_n0["person 1"]
     %% yed2mermaid: y:SVGNode is not mapped (node n3::n1)
     n3_n1["person 2"]
-    n3_n0 <--> n3_n1
+    n3_n0 <-- "#8203;" --> n3_n1
   end
   %% yed2mermaid: y:UMLClassNode is drawn as rectangle (node n4)
   n4["Class<br/>─────<br/>a<br/>b<br/>c<br/>─────<br/>test<br/>ask"]
@@ -32,5 +32,5 @@ flowchart TD
   n6["miniature image"]
   n0 -- "node 1 - group 1" --> n1
   n2_n1 -. "node 3- node 4" .-> n1_n0
-  n6 --> n0
-  n0 --> n6
+  n6 -- "#8203;" --> n0
+  n0 -- "#8203;" --> n6

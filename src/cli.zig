@@ -35,8 +35,8 @@ pub const help_text =
     \\      --title <text>        title in the front-matter
     \\      --no-front-matter     omit the front-matter block
     \\      --links               emit click lines for yEd node URLs
-    \\      --edge-filler         give label-less edges invisible labels so they do not collapse
-    \\      --no-edge-filler      keep label-less edges as they are (default)
+    \\      --edge-filler         give label-less edges invisible labels so they keep a visible shaft (default)
+    \\      --no-edge-filler      emit label-less edges exactly as drawn, which can shrink them to arrow heads
     \\      --quiet               do not print warnings
     \\  -h, --help                show this help
     \\  -V, --version             show the version
