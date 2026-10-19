@@ -65,7 +65,7 @@ Zig 0.17 or newer.
 $ zig build                 # debug binary in zig-out/bin
 $ zig build test            # unit tests and golden files
 $ zig build run -- example/example.graphml
-$ zig build dist            # release binaries for four targets
+$ zig build dist            # release binaries for five targets
 ```
 
 `zig build dist` writes stripped `ReleaseSmall` binaries to `zig-out/dist/`:
@@ -73,6 +73,7 @@ $ zig build dist            # release binaries for four targets
 | Target | Linking |
 |---|---|
 | `aarch64-macos` | system libraries only |
+| `x86_64-macos` | system libraries only |
 | `x86_64-linux-musl` | fully static |
 | `aarch64-linux-musl` | fully static |
 | `x86_64-windows` | system libraries only |
