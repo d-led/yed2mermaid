@@ -130,6 +130,13 @@ $ yed2mermaid --config '{"theme":"forest","flowchart":{"curve":"linear"}}' chart
 $ yed2mermaid --config mermaid.json chart.graphml
 ```
 
+`elk` needs the viewer to have it. Mermaid CLI and the editors ship it, and
+`example/index.html` registers it, but a hand-written page that loads Mermaid
+from a CDN as an ES module silently falls back to dagre unless it also imports
+`@mermaid-js/layout-elk` and calls `mermaid.registerLayoutLoaders(elkLayouts)`.
+The diagram then comes out in a different shape, which looks as if the converter
+had ignored the front-matter.
+
 `--no-front-matter` drops the block entirely, which is useful for renderers that
 predate 10.5 (they ignore it rather than fail, but the output is smaller).
 

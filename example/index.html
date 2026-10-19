@@ -80,6 +80,11 @@ linkStyle 4 stroke-width:2px,stroke-dasharray:2 2
     </pre>
     <script type="module">
       import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+      // Without this, `layout: elk` silently falls back to dagre, which gives
+      // a different diagram and breaks the labels of label-less edges.
+      import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+      mermaid.registerLayoutLoaders(elkLayouts);
 
       const source = document.getElementById('source').textContent.trim();
       const { svg } = await mermaid.render('example', source);
