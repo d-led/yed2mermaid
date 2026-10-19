@@ -196,7 +196,9 @@ jobs:
 
   choco:
     name: Publish Chocolatey package
-    needs: [archives, choco_key, version]
+    # Chocolatey scans the package as soon as it arrives: the release asset it
+    # downloads has to exist by then, so the release must come first.
+    needs: [archives, choco_key, release, version]
     if: needs.choco_key.outputs.configured == 'true'
     runs-on: windows-latest
     steps:
