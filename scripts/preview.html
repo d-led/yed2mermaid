@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>yed2mermaid — example</title>
+    <style>
+      body {
+        margin: 2rem;
+        font: 16px/1.5 system-ui, sans-serif;
+        color: #1a1a1a;
+      }
+      h1 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-block-end: 1.5rem;
+      }
+      .diagram {
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>example/example.graphml, rendered by Mermaid from the CDN</h1>
+    <div class="diagram" id="diagram"></div>
+    <pre id="source" hidden>
+<!--diagram-->
+    </pre>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+      const source = document.getElementById('source').textContent.trim();
+      const { svg } = await mermaid.render('example', source);
+      document.getElementById('diagram').innerHTML = svg;
+    </script>
+  </body>
+</html>

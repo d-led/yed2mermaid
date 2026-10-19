@@ -22,7 +22,10 @@ Release archives come with a `SHA256SUMS` file; the published `.rb` formula is
 generated from it.
 
 The result of that command is [example/example.mmd](example/example.mmd); the
-input is [example/example.graphml](example/example.graphml).
+input is [example/example.graphml](example/example.graphml). To look at it
+without a Mermaid toolchain, open
+[example/index.html](example/index.html) in a browser: the page carries the
+diagram inline and loads Mermaid from a CDN.
 
 ## What is preserved
 
@@ -186,7 +189,8 @@ fixtures. `example/example.mmd`, `example/example.plain.mmd` and
 `example/palette.mmd` are generated: the test suite rewrites them on every run,
 so they can never go stale, and a change to them shows up as a diff to review
 and commit. `scripts/demo.sh` produces the same files through the installed
-binary.
+binary, plus `example/index.html`, the preview page built from
+`scripts/preview.html`.
 
 ## Continuous integration
 
