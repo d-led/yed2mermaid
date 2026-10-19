@@ -1,0 +1,35 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+  n0["Node 1"]
+  subgraph n1["Group 2"]
+    n1_n0["Node 4"]
+    subgraph n1_n1["Group 1"]
+      n1_n1_n0["Node 5"]
+      n1_n1_n1["Node 6"]
+      n1_n1_n0 -. "5-6 line" .-> n1_n1_n1
+    end
+  end
+  subgraph n2["Group 3"]
+    n2_n0["Node 2"]
+    n2_n1["Node 3"]
+    n2_n1 --> n2_n0
+  end
+  subgraph n3["Group 4"]
+    %% yed2mermaid: y:SVGNode is not mapped (node n3::n0)
+    n3_n0["person 1"]
+    %% yed2mermaid: y:SVGNode is not mapped (node n3::n1)
+    n3_n1["person 2"]
+    n3_n0 <--> n3_n1
+  end
+  %% yed2mermaid: y:UMLClassNode is drawn as rectangle (node n4)
+  n4["Class<br/>─────<br/>a<br/>b<br/>c<br/>─────<br/>test<br/>ask"]
+  n5(["Use Case"])
+  %% yed2mermaid: y:ImageNode is not mapped (node n6)
+  n6["miniature image"]
+  n0 -- "node 1 - group 1" --> n1
+  n2_n1 -. "node 3- node 4" .-> n1_n0
+  n6 --> n0
+  n0 --> n6

@@ -1,0 +1,29 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+  p0["Process"]
+  p1{"Decision"}
+  %% yed2mermaid: com.yworks.flowchart.document is drawn as parallelogram (node p2)
+  p2[/"Document"/]
+  p3[("Store")]
+  p4{"Gateway"}
+  %% yed2mermaid: y:ShapeNode is drawn as hexagon (node p5)
+  p5{{"Star"}}
+  subgraph g0["Panel"]
+    g0_n0{{"Prepare"}}
+  end
+  p0 --> p1
+  p1 -. "alternate" .-> p2
+  p2 --x p3
+  p1 -- "sideways" --> g0
+style p0 fill:#E8EEF7,stroke:#000000,stroke-width:1px
+style p1 fill:#E8EEF7,stroke:#000000,stroke-width:1px
+style p2 fill:#E8EEF7,stroke:#000000,stroke-width:1px
+style p3 fill:#E8EEF7,stroke:#000000,stroke-width:1px
+style p4 fill:#FFFFFFE6,stroke:#E38B00,stroke-width:1px
+style p5 fill:none,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5
+style g0_n0 fill:#E8EEF7,stroke:#000000,stroke-width:1px
+style g0 fill:#F7F7F7,stroke:#808080,stroke-width:1px,stroke-dasharray:2 2
+linkStyle 1 stroke-dasharray:5 5

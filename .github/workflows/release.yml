@@ -1,0 +1,50 @@
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.0
+
+      - name: Cache Zig
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: ${{ runner.os }}-zig-0.17.0-${{ hashFiles('build.zig.zon') }}
+          restore-keys: |
+            ${{ runner.os }}-zig-0.17.0-
+
+      - name: Tests
+        run: ./scripts/test.sh
+
+      - name: Build release binaries
+        run: ./scripts/dist.sh
+
+      - name: Checksums
+        run: |
+          cd zig-out/dist
+          sha256sum ./* > SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: |
+            zig-out/dist/yed2mermaid-*
+            zig-out/dist/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true

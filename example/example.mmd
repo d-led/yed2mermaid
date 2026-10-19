@@ -1,0 +1,52 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+  n0["Node 1"]
+  subgraph n1["Group 2"]
+    n1_n0["Node 4"]
+    subgraph n1_n1["Group 1"]
+      n1_n1_n0["Node 5"]
+      n1_n1_n1["Node 6"]
+      n1_n1_n0 -. "5-6 line" .-> n1_n1_n1
+    end
+  end
+  subgraph n2["Group 3"]
+    n2_n0["Node 2"]
+    n2_n1["Node 3"]
+    n2_n1 --> n2_n0
+  end
+  subgraph n3["Group 4"]
+    %% yed2mermaid: y:SVGNode is not mapped (node n3::n0)
+    n3_n0["person 1"]
+    %% yed2mermaid: y:SVGNode is not mapped (node n3::n1)
+    n3_n1["person 2"]
+    n3_n0 <--> n3_n1
+  end
+  %% yed2mermaid: y:UMLClassNode is drawn as rectangle (node n4)
+  n4["Class<br/>─────<br/>a<br/>b<br/>c<br/>─────<br/>test<br/>ask"]
+  n5(["Use Case"])
+  %% yed2mermaid: y:ImageNode is not mapped (node n6)
+  n6["miniature image"]
+  n0 -- "node 1 - group 1" --> n1
+  n2_n1 -. "node 3- node 4" .-> n1_n0
+  n6 --> n0
+  n0 --> n6
+style n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n1_n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n1_n1 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n1 fill:#F5F5F5,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5,color:#000000
+style n1 fill:#F5F5F5,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5,color:#000000
+style n2_n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n2_n1 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n2 fill:#F5F5F5,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5,color:#000000
+style n3_n0 fill:#F8F8FF,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray:4 4,color:#4A148C
+style n3_n1 fill:#F8F8FF,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray:4 4,color:#4A148C
+style n3 fill:#F2F0D8,stroke:#000000,stroke-width:1px,color:#000000
+style n4 fill:#FFFF00,stroke:#000000,stroke-width:1px,color:#000000
+style n5 fill:none,stroke:#000000,stroke-width:1px,color:#000000
+style n6 fill:#F8F8FF,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray:4 4,color:#4A148C
+linkStyle 0 stroke-dasharray:5 5
+linkStyle 4 stroke-width:2px,stroke-dasharray:2 2
