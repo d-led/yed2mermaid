@@ -1,0 +1,50 @@
+---
+config:
+  layout: elk
+---
+flowchart TD
+  n0["Node 1"]
+  subgraph n1["Group 2"]
+    n1_n0["Node 4"]
+    subgraph n1_n1["Group 1"]
+      n1_n1_n0["Node 5"]
+      n1_n1_n1["Node 6"]
+      n1_n1_n0 -. "5-6 line" .-> n1_n1_n1
+    end
+  end
+  subgraph n2["Group 3"]
+    n2_n0["Node 2"]
+    n2_n1["Node 3"]
+    n2_n1 -- "#8203;" --> n2_n0
+  end
+  subgraph n3["Group 4"]
+    direction RL
+    n3_n0@{ img: "pictures/n3_n0.svg", label: "person 1", pos: "b", h: 67, w: 57 }
+    n3_n1@{ img: "pictures/n3_n1.svg", label: "person 2", pos: "b", h: 70, w: 57 }
+    n3_n0 <-- "#8203;" --> n3_n1
+  end
+  %% yed2mermaid: y:UMLClassNode is drawn as rectangle (node n4)
+  n4["Class<br/>─────<br/>a<br/>b<br/>c<br/>─────<br/>test<br/>ask"]
+  n5(["Use Case"])
+  n6@{ img: "pictures/n6.png", label: "miniature image", pos: "b", h: 107, w: 97 }
+  n0 -- "node 1 - group 1" --> n1
+  n2_n1 -. "node 3- node 4" .-> n1_n0
+  n6 -- "#8203;" --> n0
+  n0 -- "#8203;" --> n6
+style n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n1_n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n1_n1 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n1_n1 fill:#F5F5F5,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5,color:#000000
+style n1 fill:#F5F5F5,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5,color:#000000
+style n2_n0 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n2_n1 fill:#FFCC00,stroke:#000000,stroke-width:1px,color:#000000
+style n2 fill:#F5F5F5,stroke:#000000,stroke-width:1px,stroke-dasharray:5 5,color:#000000
+style n3_n0 fill:#CCCCFF,stroke:#000000,stroke-width:1px,color:#000000
+style n3_n1 fill:#CCCCFF,stroke:#000000,stroke-width:1px,color:#000000
+style n3 fill:#F2F0D8,stroke:#000000,stroke-width:1px,color:#000000
+style n4 fill:#FFFF00,stroke:#000000,stroke-width:1px,color:#000000
+style n5 fill:none,stroke:#000000,stroke-width:1px,color:#000000
+style n6 fill:#CCCCFF,stroke:#000000,stroke-width:1px,color:#000000
+linkStyle 0 stroke-dasharray:5 5
+linkStyle 4 stroke-width:2px,stroke-dasharray:2 2

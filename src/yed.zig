@@ -30,6 +30,7 @@ pub fn read(
     var context: Context = .{
         .allocator = allocator,
         .keys = try keyNames(allocator, root),
+        .resources = try readResources(allocator, root),
         .diagnostics = diag,
     };
 
@@ -48,6 +49,8 @@ pub fn read(
 const Context = struct {
     allocator: std.mem.Allocator,
     keys: std.StringHashMap([]const u8),
+    /// Pictures embedded in the document, keyed by their `y:Resource/@id`.
+    resources: std.StringHashMapUnmanaged(model.Picture),
     diagnostics: *diagnostics.Diagnostics,
 
     fn readGraph(
@@ -88,7 +91,11 @@ const Context = struct {
             } };
         }
 
-        const resolution = try self.resolve(realizer, realizer_element, id);
+        const resolution = if (isPicture(realizer))
+            try self.pictureResolution(realizer_element, id)
+        else
+            try self.resolve(realizer, realizer_element, id);
+        const picture = if (isPicture(realizer)) self.readPicture(realizer_element) else null;
         const label = if (std.mem.eql(u8, realizer, "UMLClassNode"))
             try self.umlLabel(realizer_element)
         else
@@ -103,6 +110,7 @@ const Context = struct {
             .rect = rect,
             .url = self.urlOf(element),
             .note = resolution.note,
+            .picture = picture,
         } };
     }
 
@@ -126,18 +134,45 @@ const Context = struct {
         return edge;
     }
 
+    /// A picture node keeps its label and its frame, but whether the picture
+    /// itself can be shown is only known once the resources are read: the node
+    /// says so, and `--images` decides whether the bytes are written out.
+    fn pictureResolution(self: *Context, element: *xml.Element, id: []const u8) Error!Resolved {
+        const picture = self.readPicture(element) orelse {
+            const note = try std.fmt.allocPrint(self.allocator, "y:{s} is not mapped (node {s})", .{
+                xml.localName(element.name), id,
+            });
+            try self.diagnostics.warnings.append(self.allocator, .{ .message = note });
+            return .{ .shape = .rectangle, .treatment = .unknown, .note = note };
+        };
+        if (picture.isUsable()) return .{ .shape = .rectangle, .treatment = .unknown, .note = null };
+
+        const note = try std.fmt.allocPrint(self.allocator, "the picture of node {s} cannot be read", .{id});
+        try self.diagnostics.warnings.append(self.allocator, .{ .message = note });
+        return .{ .shape = .rectangle, .treatment = .unknown, .note = note };
+    }
+
+    /// yEd keeps the picture of a node in a resource and refers to it by id; a
+    /// node may also point at an image by URL. A reference to a resource that
+    /// is not in the document yields a picture nothing can be done with.
+    fn readPicture(self: *Context, element: *xml.Element) ?model.Picture {
+        if (element.firstDescendant("Image")) |image| {
+            if (image.attribute("url")) |url| return .{ .url = url };
+            if (image.attribute("refid")) |reference| return self.resources.get(reference) orelse .{};
+            return .{};
+        }
+        if (element.firstDescendant("SVGContent")) |content| {
+            if (content.attribute("refid")) |reference| return self.resources.get(reference) orelse .{};
+        }
+        return null;
+    }
+
     fn resolve(
         self: *Context,
         realizer: []const u8,
         element: *xml.Element,
         id: []const u8,
     ) Error!Resolved {
-        if (isPicture(realizer)) {
-            const note = try std.fmt.allocPrint(self.allocator, "y:{s} is not mapped (node {s})", .{ realizer, id });
-            try self.diagnostics.warnings.append(self.allocator, .{ .message = note });
-            return .{ .shape = .rectangle, .treatment = .unknown, .note = note };
-        }
-
         const configuration = element.attribute("configuration");
         const shape_type = if (element.firstDescendant("Shape")) |shape| shape.attribute("type") else null;
         const bpmn_type = bpmnType(element);
@@ -248,6 +283,57 @@ fn isPicture(realizer: []const u8) bool {
     const pictures = [_][]const u8{ "SVGNode", "ImageNode", "TableNode", "TableGroupNode" };
     for (pictures) |picture| if (std.mem.eql(u8, picture, realizer)) return true;
     return false;
+}
+
+/// Pictures live once in the document and are referred to by `refid`. Text
+/// content is the picture itself (an SVG); anything else is base64.
+fn readResources(
+    allocator: std.mem.Allocator,
+    root: *xml.Element,
+) !std.StringHashMapUnmanaged(model.Picture) {
+    var resources: std.StringHashMapUnmanaged(model.Picture) = .empty;
+    const container = root.firstDescendant("Resources") orelse return resources;
+
+    for (container.children) |child| {
+        if (!std.mem.eql(u8, xml.localName(child.name), "Resource")) continue;
+        const id = child.attribute("id") orelse continue;
+        try resources.put(allocator, id, try decodeResource(allocator, child));
+    }
+    return resources;
+}
+
+fn decodeResource(allocator: std.mem.Allocator, element: *xml.Element) !model.Picture {
+    const content = element.textOrEmpty();
+    if (element.attribute("type") != null) {
+        const bytes = try decodeBase64(allocator, content) orelse return .{};
+        return .{ .content = bytes, .extension = sniffExtension(bytes) };
+    }
+    return .{ .content = content, .extension = sniffExtension(content) };
+}
+
+/// The resource type attribute is a Java class name, which says little about
+/// the bytes; the bytes themselves do.
+fn sniffExtension(bytes: []const u8) ?[]const u8 {
+    if (std.mem.startsWith(u8, bytes, "\x89PNG\r\n\x1a\n")) return "png";
+    if (std.mem.startsWith(u8, bytes, "\xff\xd8\xff")) return "jpg";
+    if (std.mem.startsWith(u8, bytes, "GIF8")) return "gif";
+
+    const head = std.mem.trimStart(u8, bytes, " \t\r\n");
+    if (std.mem.startsWith(u8, head, "<?xml") or std.mem.startsWith(u8, head, "<svg")) return "svg";
+    return null;
+}
+
+fn decodeBase64(allocator: std.mem.Allocator, text: []const u8) !?[]const u8 {
+    var compact: std.ArrayList(u8) = .empty;
+    for (text) |byte| {
+        if (!std.ascii.isWhitespace(byte)) try compact.append(allocator, byte);
+    }
+
+    const decoder = std.base64.standard.Decoder;
+    const size = decoder.calcSizeForSlice(compact.items) catch return null;
+    const bytes = try allocator.alloc(u8, size);
+    decoder.decode(bytes, compact.items) catch return null;
+    return bytes;
 }
 
 const Graphics = struct {
@@ -526,6 +612,60 @@ test "an edge keeps its label, line kind and width" {
     try testing.expectEqualStrings("yes", edge.label.?);
     try testing.expectEqual(model.LineKind.dotted, edge.line);
     try testing.expectEqual(@as(f32, 2), edge.width);
+}
+
+const pictures_sample =
+    "<graphml><graph id=\"g\">" ++
+    "  <node id=\"svg\"><data key=\"d6\"><y:SVGNode>" ++
+    "    <y:Geometry height=\"20\" width=\"10\" x=\"0\" y=\"0\"/>" ++
+    "    <y:SVGModel><y:SVGContent refid=\"1\"/></y:SVGModel>" ++
+    "  </y:SVGNode></data></node>" ++
+    "  <node id=\"png\"><data key=\"d6\"><y:ImageNode>" ++
+    "    <y:Geometry height=\"20\" width=\"10\" x=\"0\" y=\"0\"/>" ++
+    "    <y:Image refid=\"2\"/>" ++
+    "  </y:ImageNode></data></node>" ++
+    "  <node id=\"gone\"><data key=\"d6\"><y:ImageNode>" ++
+    "    <y:Geometry height=\"20\" width=\"10\" x=\"0\" y=\"0\"/>" ++
+    "    <y:Image refid=\"99\"/>" ++
+    "  </y:ImageNode></data></node>" ++
+    "</graph>" ++
+    "<y:Resources>" ++
+    "  <y:Resource id=\"1\" xml:space=\"preserve\">&lt;svg xmlns=\"http://www.w3.org/2000/svg\"/&gt;</y:Resource>" ++
+    "  <y:Resource id=\"2\" type=\"java.awt.image.BufferedImage\">iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==</y:Resource>" ++
+    "</y:Resources></graphml>";
+
+test "an embedded picture is read with its bytes and format" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    var xml_diagnostic: xml.Diagnostic = .{};
+    const root = try xml.parse(arena.allocator(), pictures_sample, &xml_diagnostic);
+    const diagram = try read(arena.allocator(), root, &diag);
+
+    const svg = diagram.items[0].node.picture.?;
+    try testing.expectEqualStrings("svg", svg.extension.?);
+    try testing.expect(std.mem.startsWith(u8, svg.content.?, "<svg"));
+
+    const png = diagram.items[1].node.picture.?;
+    try testing.expectEqualStrings("png", png.extension.?);
+    try testing.expect(std.mem.startsWith(u8, png.content.?, "\x89PNG"));
+
+    try testing.expectEqual(@as(usize, 1), diag.warnings.items.len);
+    try testing.expect(std.mem.indexOf(u8, diag.warnings.items[0].message, "gone") != null);
+}
+
+test "a picture whose resource is missing says so" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    var xml_diagnostic: xml.Diagnostic = .{};
+    const root = try xml.parse(arena.allocator(), pictures_sample, &xml_diagnostic);
+    const diagram = try read(arena.allocator(), root, &diag);
+
+    try testing.expect(!diagram.items[2].node.picture.?.isUsable());
+    try testing.expectEqualStrings("the picture of node gone cannot be read", diag.warnings.items[0].message);
 }
 
 test "a uml class node carries its members in the label" {

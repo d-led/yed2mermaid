@@ -53,7 +53,16 @@ fn run(allocator: std.mem.Allocator, io: std.Io, opts: options.Options) u8 {
     };
 
     var diag = diagnostics.Diagnostics.init(allocator);
-    const text = convert.convert(allocator, input, opts, config_json, &diag) catch |err| {
+    const pictures = opts.images.resolve(allocator, opts.output_path, opts.input_path) catch |err| {
+        std.debug.print("yed2mermaid: cannot resolve --images: {s}\n", .{@errorName(err)});
+        return 2;
+    };
+
+    const result = convert.convert(allocator, input, .{
+        .options = opts,
+        .config_json = config_json,
+        .images = if (pictures) |resolved| resolved.reference else null,
+    }, &diag) catch |err| {
         reportWarnings(&diag, opts.quiet);
         std.debug.print("yed2mermaid: conversion failed: {s}\n", .{@errorName(err)});
         return 2;
@@ -61,11 +70,29 @@ fn run(allocator: std.mem.Allocator, io: std.Io, opts: options.Options) u8 {
 
     reportWarnings(&diag, opts.quiet);
 
-    writeOutput(io, opts.output_path, text) catch |err| {
+    writeOutput(io, opts.output_path, result.text) catch |err| {
         std.debug.print("yed2mermaid: cannot write {s}: {s}\n", .{ opts.output_path orelse "stdout", @errorName(err) });
         return 2;
     };
+
+    if (pictures) |resolved| {
+        writePictures(io, resolved.directory, result.pictures) catch |err| {
+            std.debug.print("yed2mermaid: cannot write the pictures to {s}: {s}\n", .{ resolved.directory, @errorName(err) });
+            return 2;
+        };
+    }
     return 0;
+}
+
+fn writePictures(io: std.Io, directory: []const u8, pictures: []const convert.PictureFile) !void {
+    if (pictures.len == 0) return;
+    try std.Io.Dir.cwd().createDirPath(io, directory);
+
+    for (pictures) |picture| {
+        const path = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ directory, picture.name });
+        defer std.heap.page_allocator.free(path);
+        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = picture.content });
+    }
 }
 
 fn reportWarnings(diag: *const diagnostics.Diagnostics, quiet: bool) void {

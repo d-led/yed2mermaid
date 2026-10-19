@@ -25,7 +25,8 @@ The result of that command is [example/example.mmd](example/example.mmd); the
 input is [example/example.graphml](example/example.graphml). To look at it
 without a Mermaid toolchain, open
 [example/index.html](example/index.html) in a browser: the page carries the
-diagram inline and loads Mermaid from a CDN.
+diagram inline and loads Mermaid from a CDN. [example/images.html](example/images.html)
+is the same drawing with `--images`, so the embedded pictures appear.
 
 ## What is preserved
 
@@ -40,6 +41,9 @@ diagram inline and loads Mermaid from a CDN.
 * **Edge labels, line styles (solid/dashed/dotted) and line widths** are kept;
   the dash pattern and width are restored through `linkStyle`.
 * **UML class members** become extra label lines separated by a rule.
+* **Pictures** become image nodes once `--images` is given; the bytes yEd
+  embedded in the document are written next to the diagram. See
+  [Pictures](#pictures).
 * **Flow direction** is inferred from the drawing when `--direction auto`
   (default), or set explicitly. The same geometry heuristic is applied inside a
   group: a group whose own edges run sideways gets `direction LR` (or `RL`),
@@ -54,11 +58,11 @@ Every node is classified as one of three treatments:
 |---|---|---|
 | exact | `ShapeNode` (`y:Shape`), `GenericNode` flowchart/ER/SBGN/BPMN families | mapped shape, no comment |
 | approximate | shapes without an exact Mermaid equivalent (document, loop limit, window pane, UML class, …) | nearest shape plus a `%% yed2mermaid:` comment and a warning on stderr |
-| unknown | `SVGNode`, `ImageNode`, `TableNode`, unrecognised realizers | purple dashed box, comment and warning |
+| unknown | `TableNode`, unrecognised realizers | purple dashed box, comment and warning |
 
-Images are a deliberate gap: Mermaid's image shape takes a URL, while yEd
-embeds pictures as resources inside the file, so there is nothing portable to
-point at. The node keeps its label and is marked as unknown.
+A picture node is a shape of its own: without `--images` it is marked as
+unknown and says the picture was left out; with `--images` it becomes an image
+node and keeps the size it had in the drawing.
 
 ## Build
 
@@ -98,6 +102,9 @@ yed2mermaid [options] <file.graphml|->
       --title <text>        title in the front-matter
       --no-front-matter     omit the front-matter block
       --links               emit click lines for yEd node URLs
+      --images[=<dir>]      write the pictures the drawing embeds into <dir> and point
+                            the diagram at them; without <dir> they go to
+                            <output>-images ("auto" says the same)
       --edge-filler         give label-less edges invisible labels so they keep a visible shaft (default)
       --no-edge-filler      emit label-less edges exactly as drawn, which can shrink them to arrow heads
       --quiet               do not print warnings
@@ -139,6 +146,28 @@ had ignored the front-matter.
 
 `--no-front-matter` drops the block entirely, which is useful for renderers that
 predate 10.5 (they ignore it rather than fail, but the output is smaller).
+
+### Pictures
+
+yEd embeds a picture in the document (`<y:Resources><y:Resource>`), and the node
+only refers to it by id, so there is nothing a viewer could fetch. `--images`
+writes those bytes out and turns each picture node into a Mermaid image node of
+the size it was drawn:
+
+```console
+$ yed2mermaid --images=pictures chart.graphml -o chart.mmd
+$ open chart.mmd          # n3_n0@{ img: "pictures/n3_n0.svg", label: "person 1", pos: "b", h: 67, w: 57 }
+```
+
+The reference is relative to the diagram, so `pictures` means "next to the
+diagram". Without a value, the directory is `<output>-images` (`chart-images`
+above); with no `-o` it follows the input document's name. Files are named after
+the node's Mermaid id, and the format is sniffed from the bytes — SVG text stays
+SVG, base64 resources become `.png`, `.jpg` or `.gif`. A node that points at an
+image by URL is used as it is, with nothing written out.
+
+Pictures are the one thing whose size is copied: a Mermaid image node has no
+intrinsic size, and the drawing's proportions are the honest answer.
 
 ## How the mapping is done
 
@@ -192,12 +221,14 @@ key an icon on. Subtype information therefore appears as a comment.
 ## Development
 
 `example/example.graphml` and `example/palette.graphml` are hand written test
-fixtures. `example/example.mmd`, `example/example.plain.mmd` and
-`example/palette.mmd` are generated: the test suite rewrites them on every run,
-so they can never go stale, and a change to them shows up as a diff to review
-and commit. `scripts/demo.sh` produces the same files through the installed
-binary, plus `example/index.html`, the preview page built from
-`scripts/preview.html`.
+fixtures. `example/example.mmd`, `example/example.plain.mmd`,
+`example/example.images.mmd` and `example/palette.mmd` are generated: the test
+suite rewrites them on every run, so they can never go stale, and a change to
+them shows up as a diff to review and commit. `scripts/demo.sh` produces the
+same files through the installed binary, plus `example/pictures` (the extracted
+pictures) and the preview pages `example/index.html` and `example/images.html`,
+built from `scripts/preview.html`. Open the pages in a browser; the second one
+shows what `--images` buys.
 
 ## Continuous integration
 
@@ -261,7 +292,8 @@ layout engines.
 colour swatches or schema-generated code. The tables in `src/shapes.zig` are
 hand written and only associate yEd's public identifier strings with Mermaid's
 own shape vocabulary; every colour, border and label in the output is read from
-the input document.
+the input document. `--images` copies the pictures out of your own document
+byte for byte and writes them nowhere else.
 
 **Markers.** The licence notes that yEd may insert markers into the files it
 writes. Those are comments; the parser ignores them, so such files convert

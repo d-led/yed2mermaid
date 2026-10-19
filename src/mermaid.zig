@@ -23,6 +23,9 @@ pub const RenderOptions = struct {
     links: bool = false,
     edge_filler: bool = true,
     direction: options.Direction = .auto,
+    /// Directory the extracted pictures are referenced from; null leaves every
+    /// picture out and keeps the node as the marked-up box it would otherwise be.
+    images: ?[]const u8 = null,
 };
 
 const unknown_style = "fill:#F8F8FF,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray:4 4,color:#4A148C";
@@ -107,21 +110,37 @@ const Emitter = struct {
 
     fn emitNode(self: *Emitter, node: *const model.Node, indent: usize) Error!void {
         const id = self.ids.ids.get(node.id) orelse return error.InvalidDiagram;
+        const picture = try self.pictureReference(node);
 
         if (node.note) |note| {
             try writeIndent(self.writer, indent);
             try self.writer.print("%% yed2mermaid: {s}\n", .{note});
         }
+        if (picture == null) {
+            if (node.picture) |drawn| {
+                if (drawn.isUsable()) {
+                    try writeIndent(self.writer, indent);
+                    try self.writer.print(
+                        "%% yed2mermaid: the picture of node {s} is left out; pass --images to extract it\n",
+                        .{node.id},
+                    );
+                }
+            }
+        }
 
-        try writeIndent(self.writer, indent);
-        try self.writer.writeAll(id);
-        try writeShapeStart(self.writer, node.shape);
-        try writeLabel(self.writer, node.label);
-        try writeShapeEnd(self.writer, node.shape);
-        try self.writer.writeByte('\n');
+        if (picture) |reference| {
+            try self.emitImage(id, node, reference, indent);
+        } else {
+            try writeIndent(self.writer, indent);
+            try self.writer.writeAll(id);
+            try writeShapeStart(self.writer, node.shape);
+            try writeLabel(self.writer, node.label);
+            try writeShapeEnd(self.writer, node.shape);
+            try self.writer.writeByte('\n');
+        }
 
         if (!self.render_options.styling) return;
-        try self.recordStyle(id, node.style, node.treatment == .unknown);
+        try self.recordStyle(id, node.style, node.treatment == .unknown and picture == null);
 
         if (self.render_options.links) {
             if (node.url) |url| {
@@ -129,6 +148,48 @@ const Emitter = struct {
                 try self.statements.append(self.allocator, statement);
             }
         }
+    }
+
+    /// A picture becomes an image node whose size is the size it had in the
+    /// drawing: the picture is the one thing whose proportions Mermaid would
+    /// otherwise have to guess.
+    fn emitImage(
+        self: *Emitter,
+        id: []const u8,
+        node: *const model.Node,
+        reference: []const u8,
+        indent: usize,
+    ) Error!void {
+        try writeIndent(self.writer, indent);
+        try self.writer.writeAll(id);
+        try self.writer.writeAll("@{ img: \"");
+        try writeLabel(self.writer, reference);
+        try self.writer.writeAll("\", label: \"");
+        try writeLabel(self.writer, node.label);
+        try self.writer.writeAll("\", pos: \"b\"");
+        if (node.rect.width > 0 and node.rect.height > 0) {
+            try self.writer.print(", h: {d}, w: {d}", .{
+                @as(i32, @intFromFloat(@round(node.rect.height))),
+                @as(i32, @intFromFloat(@round(node.rect.width))),
+            });
+        }
+        try self.writer.writeAll(" }\n");
+    }
+
+    fn pictureReference(self: *Emitter, node: *const model.Node) Error!?[]const u8 {
+        const directory = self.render_options.images orelse return null;
+        const picture = node.picture orelse return null;
+        if (picture.url) |url| return url;
+
+        const extension = picture.extension orelse return null;
+        if (picture.content == null) return null;
+
+        const name = try pictureName(self.allocator, node.id, extension);
+        const reference = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{
+            std.mem.trimEnd(u8, directory, "/\\"),
+            name,
+        });
+        return reference;
     }
 
     fn emitGroup(
@@ -420,7 +481,7 @@ fn isStrictlyInside(ids: *IdTables, raw_id: []const u8, group_id: []const u8) bo
     return false;
 }
 
-fn sanitizeId(allocator: std.mem.Allocator, raw: []const u8) Error![]const u8 {
+fn sanitizeId(allocator: std.mem.Allocator, raw: []const u8) error{OutOfMemory}![]const u8 {
     var buffer: std.ArrayList(u8) = .empty;
     var previous_was_separator = false;
     for (raw, 0..) |byte, index| {
@@ -547,6 +608,16 @@ fn writeIndent(writer: *std.Io.Writer, count: usize) Error!void {
     while (remaining > 0) : (remaining -= 1) try writer.writeAll("  ");
 }
 
+/// The file a node's picture is extracted to. It shares the sanitized node id
+/// with the diagram, so a name in the output can be traced back to its node.
+pub fn pictureName(
+    allocator: std.mem.Allocator,
+    node_id: []const u8,
+    extension: []const u8,
+) error{OutOfMemory}![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s}.{s}", .{ try sanitizeId(allocator, node_id), extension });
+}
+
 const testing = std.testing;
 
 fn testNode(id: []const u8, label: []const u8, rect: model.Rect) model.Node {
@@ -557,6 +628,18 @@ fn testNode(id: []const u8, label: []const u8, rect: model.Rect) model.Node {
         .treatment = .exact,
         .style = .{ .fill = "#FFCC00", .stroke = "#000000" },
         .rect = rect,
+    };
+}
+
+fn pictureNode(picture: model.Picture) model.Node {
+    return .{
+        .id = "logo",
+        .label = "Logo",
+        .shape = .rectangle,
+        .treatment = .unknown,
+        .style = .{},
+        .rect = .{ .width = 60, .height = 30 },
+        .picture = picture,
     };
 }
 
@@ -737,6 +820,48 @@ test "the filler can be turned off" {
     const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{ .edge_filler = false }, &diag);
 
     try testing.expect(std.mem.indexOf(u8, text, "a <--> b") != null);
+}
+
+test "a picture becomes an image node of the size it was drawn" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = pictureNode(.{ .content = "bytes", .extension = "png" }) },
+    });
+    const text = try render(arena.allocator(), .{ .items = items, .edges = &.{} }, .{ .images = "assets" }, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "logo@{ img: \"assets/logo.png\", label: \"Logo\", pos: \"b\", h: 30, w: 60 }") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fill:#F8F8FF") == null);
+}
+
+test "a picture the drawing points at by URL is referenced as it is" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = pictureNode(.{ .url = "https://example.com/logo.png" }) },
+    });
+    const text = try render(arena.allocator(), .{ .items = items, .edges = &.{} }, .{ .images = "assets" }, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "logo@{ img: \"https://example.com/logo.png\"") != null);
+}
+
+test "a picture that is not extracted is left out with a comment" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = pictureNode(.{ .content = "bytes", .extension = "png" }) },
+    });
+    const text = try render(arena.allocator(), .{ .items = items, .edges = &.{} }, .{}, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "%% yed2mermaid: the picture of node logo is left out") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "@{ img:") == null);
+    try testing.expect(std.mem.indexOf(u8, text, "style logo fill:#F8F8FF") != null);
 }
 
 test "a subgraph drawn horizontally gets its own direction" {

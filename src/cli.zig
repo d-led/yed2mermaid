@@ -35,6 +35,9 @@ pub const help_text =
     \\      --title <text>        title in the front-matter
     \\      --no-front-matter     omit the front-matter block
     \\      --links               emit click lines for yEd node URLs
+    \\      --images[=<dir>]      write the pictures the drawing embeds into <dir> and point
+    \\                            the diagram at them; without <dir> they go to
+    \\                            <output>-images ("auto" says the same)
     \\      --edge-filler         give label-less edges invisible labels so they keep a visible shaft (default)
     \\      --no-edge-filler      emit label-less edges exactly as drawn, which can shrink them to arrow heads
     \\      --quiet               do not print warnings
@@ -75,6 +78,10 @@ pub fn parse(args: []const []const u8) Error!Command {
             }
             if (std.mem.eql(u8, name, "--links")) {
                 result.links = true;
+                continue;
+            }
+            if (std.mem.eql(u8, name, "--images")) {
+                result.images = if (attached) |dir| try parseImages(dir) else .automatic;
                 continue;
             }
             if (std.mem.eql(u8, name, "--edge-filler")) {
@@ -182,6 +189,12 @@ fn classifyConfig(value: []const u8) options.ConfigSource {
     return .{ .file = value };
 }
 
+fn parseImages(value: []const u8) Error!options.Images {
+    if (value.len == 0) return error.MissingValue;
+    if (std.mem.eql(u8, value, "auto")) return .automatic;
+    return .{ .directory = value };
+}
+
 const testing = std.testing;
 
 test "a file argument becomes the input" {
@@ -237,4 +250,26 @@ test "help and version are commands of their own" {
 
     try testing.expect(help == .help);
     try testing.expect(version_command == .version);
+}
+
+test "--images alone extracts next to the output" {
+    const command = try parse(&.{ "--images", "chart.graphml", "-o", "charts/flow.mmd" });
+
+    try testing.expect(command.convert.images == .automatic);
+}
+
+test "--images=<dir> extracts into that directory" {
+    const command = try parse(&.{ "--images=assets/pics", "chart.graphml" });
+
+    try testing.expectEqualStrings("assets/pics", command.convert.images.directory);
+}
+
+test "--images=auto is the same as --images" {
+    const command = try parse(&.{ "--images=auto", "chart.graphml" });
+
+    try testing.expect(command.convert.images == .automatic);
+}
+
+test "--images= is a missing value" {
+    try testing.expectError(error.MissingValue, parse(&.{ "--images=", "chart.graphml" }));
 }

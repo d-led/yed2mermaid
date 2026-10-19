@@ -51,6 +51,23 @@ pub const Node = struct {
     url: ?[]const u8 = null,
     /// Human readable explanation for approximate/unknown nodes.
     note: ?[]const u8 = null,
+    /// Set when the drawing shows a picture instead of a drawn shape.
+    picture: ?Picture = null,
+};
+
+/// Where a node's picture lives: either a reference the drawing itself carries,
+/// or bytes yEd embedded in the document under `<y:Resources>`.
+pub const Picture = struct {
+    url: ?[]const u8 = null,
+    content: ?[]const u8 = null,
+    extension: ?[]const u8 = null,
+
+    /// True when the picture can be shown: an external reference, or embedded
+    /// bytes we know how to name.
+    pub fn isUsable(self: Picture) bool {
+        if (self.url != null) return true;
+        return self.content != null and self.extension != null;
+    }
 };
 
 pub const Group = struct {

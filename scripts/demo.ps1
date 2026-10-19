@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
-# Regenerates the example outputs and the preview page. The test run rewrites
-# the diagrams too; CI fails when the committed copies are out of date.
+# Regenerates the example outputs, the extracted pictures and the preview pages.
+# The test run rewrites the diagrams too; CI fails when the committed copies are
+# out of date.
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
@@ -22,10 +23,28 @@ foreach ($job in $jobs) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-Write-Host '+ example/index.html from scripts/preview.html and example/example.mmd'
-$template = Get-Content 'scripts/preview.html' -Raw
-$diagram = (Get-Content 'example/example.mmd' -Raw).TrimEnd()
-$escaped = $diagram.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
-Set-Content 'example/index.html' -Value $template.Replace('<!--diagram-->', $escaped) -NoNewline
+Write-Host "+ $bin --images=pictures example/example.graphml -o example/example.images.mmd"
+Remove-Item 'example/pictures' -Recurse -Force -ErrorAction SilentlyContinue
+& $bin @('--images=pictures', 'example/example.graphml', '-o', 'example/example.images.mmd')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host 'regenerated example/example.mmd example/example.plain.mmd example/palette.mmd example/index.html'
+# The pages carry their diagram inline so they open straight from the file
+# system; `--images` references stay relative and resolve next to the page.
+function Write-Page {
+    param([string]$Title, [string]$Diagram, [string]$Output)
+
+    $template = Get-Content 'scripts/preview.html' -Raw
+    $source = (Get-Content $Diagram -Raw).TrimEnd()
+    $escaped = $source.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
+    $html = $template.Replace('<!--title-->', $Title).Replace('<!--diagram-->', $escaped)
+    Set-Content $Output -Value $html -NoNewline
+}
+
+Write-Host '+ example/index.html and example/images.html'
+Write-Page 'example/example.graphml, rendered by Mermaid from the CDN' `
+    'example/example.mmd' 'example/index.html'
+Write-Page 'example/example.graphml with --images=pictures, rendered by Mermaid from the CDN' `
+    'example/example.images.mmd' 'example/images.html'
+
+Write-Host 'regenerated example/example.mmd example/example.plain.mmd example/palette.mmd'
+Write-Host '            example/example.images.mmd example/pictures example/index.html example/images.html'
