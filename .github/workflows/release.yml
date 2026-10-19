@@ -3,13 +3,33 @@ name: release
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released version to rebuild, without the v prefix (e.g. 0.1.0)
+        required: true
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - id: resolve
+        run: |
+          raw="${{ inputs.version || github.ref_name }}"
+          version="${raw#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
   test:
     name: Test
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,7 +55,7 @@ jobs:
 
   archives:
     name: Build archives
-    needs: test
+    needs: [test, version]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,7 +77,7 @@ jobs:
             ${{ runner.os }}-zig-0.17.0-
 
       - name: Package
-        run: ./scripts/package.sh "${GITHUB_REF_NAME#v}"
+        run: ./scripts/package.sh "${{ needs.version.outputs.version }}"
 
       - name: Upload archives
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -68,14 +88,14 @@ jobs:
 
   release:
     name: Publish release
-    needs: archives
+    needs: [archives, version]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download archives
-        uses: actions/download-artifact@13a4c94b37b5e3c30c8e06b1b0b9c7d4e2d3a1f9 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: packages
           path: dist/packages
@@ -83,7 +103,7 @@ jobs:
       - name: Generate the Homebrew formula
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ needs.version.outputs.version }}"
           checksum() {
             awk -v file="$1" '{ name = $2; sub("^\\./", "", name); if (name == file) print $1 }' dist/packages/SHA256SUMS
           }
@@ -97,6 +117,7 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
           files: |
             dist/packages/yed2mermaid-*
             dist/packages/SHA256SUMS
@@ -117,7 +138,7 @@ jobs:
 
   tap:
     name: Publish formula to the tap
-    needs: [release, tap_key]
+    needs: [release, tap_key, version]
     if: needs.tap_key.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -125,7 +146,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download archives
-        uses: actions/download-artifact@13a4c94b37b5e3c30c8e06b1b0b9c7d4e2d3a1f9 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: packages
           path: dist/packages
@@ -133,7 +154,7 @@ jobs:
       - name: Generate the Homebrew formula
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ needs.version.outputs.version }}"
           checksum() {
             awk -v file="$1" '{ name = $2; sub("^\\./", "", name); if (name == file) print $1 }' dist/packages/SHA256SUMS
           }
@@ -149,7 +170,7 @@ jobs:
           PUBLISHER_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ needs.version.outputs.version }}"
           git clone --depth 1 "https://x-access-token:${PUBLISHER_TOKEN}@github.com/d-led/homebrew-d-led.git" dist/tap
           cp dist/yed2mermaid.rb dist/tap/yed2mermaid.rb
           git -C dist/tap config user.name "Dmitry Ledentsov"
@@ -175,7 +196,7 @@ jobs:
 
   choco:
     name: Publish Chocolatey package
-    needs: [archives, choco_key]
+    needs: [archives, choco_key, version]
     if: needs.choco_key.outputs.configured == 'true'
     runs-on: windows-latest
     steps:
@@ -183,7 +204,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download archives
-        uses: actions/download-artifact@13a4c94b37b5e3c30c8e06b1b0b9c7d4e2d3a1f9 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: packages
           path: dist/packages
@@ -194,7 +215,7 @@ jobs:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $version = '${{ needs.version.outputs.version }}'
           $url = "https://github.com/d-led/yed2mermaid/releases/download/v$version/yed2mermaid-$version-windows-x64.zip"
           $line = Select-String -Path 'dist/packages/SHA256SUMS' -Pattern "yed2mermaid-$version-windows-x64.zip"
           if (-not $line) { throw "checksum for the Windows archive not found" }
