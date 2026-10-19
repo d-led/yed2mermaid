@@ -10,6 +10,17 @@ reads a `.graphml` file you already own and prints (or writes) Mermaid text.
 $ yed2mermaid example/example.graphml -o example/example.mmd
 ```
 
+Install with Homebrew, Chocolatey, or download an archive from the
+[releases](https://github.com/d-led/yed2mermaid/releases):
+
+```console
+$ brew install d-led/d-led/yed2mermaid      # macOS and Linux
+> choco install yed2mermaid                 # Windows
+```
+
+Release archives come with a `SHA256SUMS` file; the published `.rb` formula is
+generated from it.
+
 The result of that command is [example/example.mmd](example/example.mmd); the
 input is [example/example.graphml](example/example.graphml).
 
@@ -27,7 +38,10 @@ input is [example/example.graphml](example/example.graphml).
   the dash pattern and width are restored through `linkStyle`.
 * **UML class members** become extra label lines separated by a rule.
 * **Flow direction** is inferred from the drawing when `--direction auto`
-  (default), or set explicitly.
+  (default), or set explicitly. The same geometry heuristic is applied inside a
+  group: a group whose own edges run sideways gets `direction LR` (or `RL`),
+  but only when none of its members connect to the outside — Mermaid ignores a
+  subgraph direction in that case.
 
 ## What is marked instead of guessed
 
@@ -80,6 +94,8 @@ yed2mermaid [options] <file.graphml|->
       --title <text>        title in the front-matter
       --no-front-matter     omit the front-matter block
       --links               emit click lines for yEd node URLs
+      --edge-filler         give label-less edges invisible labels so they do not collapse
+      --no-edge-filler      keep label-less edges as they are (default)
       --quiet               do not print warnings
   -h, --help                show this help
   -V, --version             show the version
@@ -147,10 +163,13 @@ key an icon on. Subtype information therefore appears as a comment.
   becomes as small as its labels, and its internal edges shrink with it.
 * ELK packs the layers inside a subgraph tightly, and Mermaid hard-codes that
   spacing: `flowchart.nodeSpacing` is a Dagre option, and Mermaid's link-length
-  hints (`--->`) are ignored by ELK. A short edge inside a group — a
-  bidirectional arrow between two neighbouring boxes, for instance — can
-  therefore look stubby. `--layout dagre` gives those layers noticeably more
-  room; it spreads the whole diagram wider in exchange.
+  hints (`--->`) are ignored by ELK. The direction heuristic above removes most
+  of the sting by laying a sideways group out sideways, but a short edge between
+  two stacked layers can still look stubby. `--edge-filler` adds a zero-width
+  space as the label of every unlabelled edge, which makes Mermaid reserve the
+  same room a real label would: measured on the example, the gap between the two
+  picture nodes grows from 84 px to 138 px. `--layout dagre` is the other way to
+  buy room, at the cost of a much wider diagram.
 * Gradients (`y:Fill/@color2`) collapse to the first colour.
 * Ports, edge routing, drop shadows, labels positioned outside the node and
   collapsed groups are not reproduced.
@@ -168,13 +187,34 @@ them, and the test suite fails when they disagree.
 
 `.github/workflows/ci.yml` checks formatting, runs the test suite (its summary
 is written to the run page), regenerates the example outputs and fails when they
-differ from the committed ones, then builds the four release binaries and
-uploads them as build artifacts.
+differ from the committed ones, then builds the release binaries and uploads
+them as build artifacts.
 
-`.github/workflows/release.yml` publishes those binaries plus a `SHA256SUMS`
-file and generated release notes for every `v*.*.*` tag.
+`.github/workflows/release.yml` runs only for `v*.*.*` tags. It tests, builds
+the archives (`scripts/package.sh`), publishes them with `SHA256SUMS` and the
+generated Homebrew formula, then updates the tap and the Chocolatey package when
+the credentials are configured:
+
+| Secret | Used for |
+|---|---|
+| `PUBLISHER_TOKEN` | pushing `yed2mermaid.rb` to `d-led/homebrew-d-led` |
+| `CHOCOLATEY_API_KEY` | `choco push` to community.chocolatey.org |
+
+Both jobs skip themselves when their secret is absent, so a tag never fails
+because publishing is not configured. Version tags are protected: they cannot be
+deleted, moved or rewritten.
 
 Every action is pinned by commit; `actions-up` keeps the pins current.
+
+## Packaging
+
+| Script | Result |
+|---|---|
+| `scripts/package.sh <version>` | `dist/packages` with five archives and `SHA256SUMS` |
+| `scripts/generate-homebrew-formula.sh` | the formula, from the four Unix checksums |
+| `scripts/generate-chocolatey-package.sh` | substituted nuspec and install script, packed when `choco` is available |
+
+Each has a PowerShell twin.
 
 ## Legal notes
 

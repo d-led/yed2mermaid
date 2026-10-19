@@ -45,6 +45,7 @@ pub fn convert(
     const body = mermaid.render(allocator, diagram, .{
         .styling = opts.styling,
         .links = opts.links,
+        .edge_filler = opts.edge_filler,
         .direction = opts.direction,
     }, diag) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,

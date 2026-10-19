@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>yed2mermaid</id>
+    <version>__VERSION__</version>
+    <title>yed2mermaid</title>
+    <authors>Dmitry Ledentsov</authors>
+    <owners>Dmitry Ledentsov</owners>
+    <copyright>Copyright © 2026 Dmitry Ledentsov</copyright>
+    <projectUrl>https://github.com/d-led/yed2mermaid</projectUrl>
+    <projectSourceUrl>https://github.com/d-led/yed2mermaid</projectSourceUrl>
+    <packageSourceUrl>https://github.com/d-led/yed2mermaid/tree/main/chocolatey</packageSourceUrl>
+    <docsUrl>https://github.com/d-led/yed2mermaid#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/d-led/yed2mermaid/issues</bugTrackerUrl>
+    <licenseUrl>https://github.com/d-led/yed2mermaid/blob/main/LICENSE</licenseUrl>
+    <tags>yed graphml mermaid flowchart diagram converter zig</tags>
+    <summary>Convert yEd GraphML flowcharts to Mermaid</summary>
+    <description>Converts yEd GraphML flowcharts into Mermaid flowchart text.
+
+Groups become nested subgraphs, node shapes come from the yEd palette identifiers, and fills, borders and dash patterns are read from the document. Nodes the converter cannot represent faithfully are marked instead of guessed.
+
+The binary is self-contained: no runtime, no dependencies, no network access.</description>
+    <releaseNotes>__RELEASE_URL__</releaseNotes>
+  </metadata>
+</package>

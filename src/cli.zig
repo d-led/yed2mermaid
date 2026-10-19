@@ -35,6 +35,8 @@ pub const help_text =
     \\      --title <text>        title in the front-matter
     \\      --no-front-matter     omit the front-matter block
     \\      --links               emit click lines for yEd node URLs
+    \\      --edge-filler         give label-less edges invisible labels so they do not collapse
+    \\      --no-edge-filler      keep label-less edges as they are (default)
     \\      --quiet               do not print warnings
     \\  -h, --help                show this help
     \\  -V, --version             show the version
@@ -73,6 +75,14 @@ pub fn parse(args: []const []const u8) Error!Command {
             }
             if (std.mem.eql(u8, name, "--links")) {
                 result.links = true;
+                continue;
+            }
+            if (std.mem.eql(u8, name, "--edge-filler")) {
+                result.edge_filler = true;
+                continue;
+            }
+            if (std.mem.eql(u8, name, "--no-edge-filler")) {
+                result.edge_filler = false;
                 continue;
             }
             if (std.mem.eql(u8, name, "--quiet")) {

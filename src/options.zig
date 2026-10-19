@@ -46,6 +46,7 @@ pub const Options = struct {
     front_matter: bool = true,
     links: bool = false,
     quiet: bool = false,
+    edge_filler: bool = false,
     layout: Layout = .elk,
     title: ?[]const u8 = null,
     config: ConfigSource = .none,

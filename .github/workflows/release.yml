@@ -8,7 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,19 +33,176 @@ jobs:
       - name: Tests
         run: ./scripts/test.sh
 
-      - name: Build release binaries
-        run: ./scripts/dist.sh
+  archives:
+    name: Build archives
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Checksums
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.0
+
+      - name: Cache Zig
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: ${{ runner.os }}-zig-0.17.0-${{ hashFiles('build.zig.zon') }}
+          restore-keys: |
+            ${{ runner.os }}-zig-0.17.0-
+
+      - name: Package
+        run: ./scripts/package.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Upload archives
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: dist/packages
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: archives
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download archives
+        uses: actions/download-artifact@13a4c94b37b5e3c30c8e06b1b0b9c7d4e2d3a1f9 # v8.0.2
+        with:
+          name: packages
+          path: dist/packages
+
+      - name: Generate the Homebrew formula
         run: |
-          cd zig-out/dist
-          sha256sum ./* > SHA256SUMS
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          checksum() {
+            awk -v file="$1" '{ name = $2; sub("^\\./", "", name); if (name == file) print $1 }' dist/packages/SHA256SUMS
+          }
+          VERSION="${version}" \
+          SHA_MACOS_ARM64="$(checksum "yed2mermaid-${version}-macos-arm64.tar.gz")" \
+          SHA_MACOS_X64="$(checksum "yed2mermaid-${version}-macos-x64.tar.gz")" \
+          SHA_LINUX_ARM64="$(checksum "yed2mermaid-${version}-linux-arm64.tar.gz")" \
+          SHA_LINUX_X64="$(checksum "yed2mermaid-${version}-linux-x64.tar.gz")" \
+            ./scripts/generate-homebrew-formula.sh > dist/yed2mermaid.rb
 
-      - name: Publish release
+      - name: Publish
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: |
-            zig-out/dist/yed2mermaid-*
-            zig-out/dist/SHA256SUMS
+            dist/packages/yed2mermaid-*
+            dist/packages/SHA256SUMS
+            dist/yed2mermaid.rb
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  tap_key:
+    name: Check for the tap token
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          PUBLISHER_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
+        run: echo "configured=${{ env.PUBLISHER_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
+  tap:
+    name: Publish formula to the tap
+    needs: [release, tap_key]
+    if: needs.tap_key.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download archives
+        uses: actions/download-artifact@13a4c94b37b5e3c30c8e06b1b0b9c7d4e2d3a1f9 # v8.0.2
+        with:
+          name: packages
+          path: dist/packages
+
+      - name: Generate the Homebrew formula
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          checksum() {
+            awk -v file="$1" '{ name = $2; sub("^\\./", "", name); if (name == file) print $1 }' dist/packages/SHA256SUMS
+          }
+          VERSION="${version}" \
+          SHA_MACOS_ARM64="$(checksum "yed2mermaid-${version}-macos-arm64.tar.gz")" \
+          SHA_MACOS_X64="$(checksum "yed2mermaid-${version}-macos-x64.tar.gz")" \
+          SHA_LINUX_ARM64="$(checksum "yed2mermaid-${version}-linux-arm64.tar.gz")" \
+          SHA_LINUX_X64="$(checksum "yed2mermaid-${version}-linux-x64.tar.gz")" \
+            ./scripts/generate-homebrew-formula.sh > dist/yed2mermaid.rb
+
+      - name: Update the tap
+        env:
+          PUBLISHER_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          git clone --depth 1 "https://x-access-token:${PUBLISHER_TOKEN}@github.com/d-led/homebrew-d-led.git" dist/tap
+          cp dist/yed2mermaid.rb dist/tap/yed2mermaid.rb
+          git -C dist/tap config user.name "Dmitry Ledentsov"
+          git -C dist/tap config user.email "dmlled@yahoo.com"
+          git -C dist/tap add yed2mermaid.rb
+          if git -C dist/tap diff --cached --quiet; then
+            echo "Formula is up to date; nothing to push"
+          else
+            git -C dist/tap commit -m "yed2mermaid ${version}"
+            git -C dist/tap push
+          fi
+
+  choco_key:
+    name: Check for the Chocolatey API key
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: echo "configured=${{ env.CHOCOLATEY_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
+
+  choco:
+    name: Publish Chocolatey package
+    needs: [archives, choco_key]
+    if: needs.choco_key.outputs.configured == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download archives
+        uses: actions/download-artifact@13a4c94b37b5e3c30c8e06b1b0b9c7d4e2d3a1f9 # v8.0.2
+        with:
+          name: packages
+          path: dist/packages
+
+      - name: Create and push the package
+        shell: pwsh
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $url = "https://github.com/d-led/yed2mermaid/releases/download/v$version/yed2mermaid-$version-windows-x64.zip"
+          $line = Select-String -Path 'dist/packages/SHA256SUMS' -Pattern "yed2mermaid-$version-windows-x64.zip"
+          if (-not $line) { throw "checksum for the Windows archive not found" }
+          $sha256 = ($line.Line -split '\s+')[0]
+
+          $env:VERSION = $version
+          $env:URL = $url
+          $env:SHA256 = $sha256
+          ./scripts/generate-chocolatey-package.ps1
+
+          choco push "dist/choco/yed2mermaid.$version.nupkg" --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY

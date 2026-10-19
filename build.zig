@@ -47,6 +47,7 @@ const DistTarget = struct {
 
 const dist_targets = [_]DistTarget{
     .{ .name = "aarch64-macos", .query = .{ .cpu_arch = .aarch64, .os_tag = .macos } },
+    .{ .name = "x86_64-macos", .query = .{ .cpu_arch = .x86_64, .os_tag = .macos } },
     .{ .name = "x86_64-linux-musl", .query = .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl } },
     .{ .name = "aarch64-linux-musl", .query = .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .musl } },
     .{ .name = "x86_64-windows", .query = .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu } },

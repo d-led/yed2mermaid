@@ -21,6 +21,7 @@ pub const Error = error{
 pub const RenderOptions = struct {
     styling: bool = true,
     links: bool = false,
+    edge_filler: bool = false,
     direction: options.Direction = .auto,
 };
 
@@ -58,7 +59,7 @@ pub fn render(
 
     const direction = resolveDirection(&ids, diagram, render_options.direction);
     try emitter.writer.print("flowchart {s}\n", .{direction.name()});
-    try emitter.emitItems(diagram.items, 1, null);
+    try emitter.emitItems(diagram.items, 1, null, direction);
 
     if (render_options.styling) {
         for (emitter.statements.items) |statement| {
@@ -85,13 +86,19 @@ const Emitter = struct {
     render_options: RenderOptions,
     links_emitted: usize,
 
-    fn emitItems(self: *Emitter, items: []const model.Item, indent: usize, container: ?[]const u8) Error!void {
+    fn emitItems(
+        self: *Emitter,
+        items: []const model.Item,
+        indent: usize,
+        container: ?[]const u8,
+        inherited: options.Direction,
+    ) Error!void {
         for (items) |*item| {
             switch (item.*) {
                 .node => |node| try self.emitNode(&node, indent),
                 .group => {
                     const group = &item.group;
-                    try self.emitGroup(group, indent);
+                    try self.emitGroup(group, indent, inherited);
                 },
             }
         }
@@ -124,7 +131,12 @@ const Emitter = struct {
         }
     }
 
-    fn emitGroup(self: *Emitter, group: *const model.Group, indent: usize) Error!void {
+    fn emitGroup(
+        self: *Emitter,
+        group: *const model.Group,
+        indent: usize,
+        inherited: options.Direction,
+    ) Error!void {
         const id = self.ids.ids.get(group.id) orelse return error.InvalidDiagram;
 
         try writeIndent(self.writer, indent);
@@ -134,7 +146,16 @@ const Emitter = struct {
         try writeLabel(self.writer, group.title);
         try self.writer.writeAll("\"]\n");
 
-        try self.emitItems(group.items, indent + 1, group.id);
+        var effective = inherited;
+        if (self.render_options.direction == .auto) {
+            if (subgraphDirection(self.ids, group, self.edges, inherited)) |direction| {
+                effective = direction;
+                try writeIndent(self.writer, indent + 1);
+                try self.writer.print("direction {s}\n", .{direction.name()});
+            }
+        }
+
+        try self.emitItems(group.items, indent + 1, group.id, effective);
 
         try writeIndent(self.writer, indent);
         try self.writer.writeAll("end\n");
@@ -154,7 +175,16 @@ const Emitter = struct {
         const source = self.ids.ids.get(edge.source) orelse return error.InvalidDiagram;
         const target = self.ids.ids.get(edge.target) orelse return error.InvalidDiagram;
 
-        const has_label = edge.label != null;
+        // A label makes Mermaid reserve room between the ranks. An edge without
+        // one gets the minimum gap, which can leave no shaft between the arrow
+        // heads; the zero-width space buys that room without being visible.
+        const text: ?[]const u8 = if (edge.label) |label|
+            label
+        else if (self.render_options.edge_filler)
+            "#8203;"
+        else
+            null;
+        const has_label = text != null;
         const connector = connectorFor(edge, has_label);
         if (connector.approximate) {
             try self.diagnostics.warn(
@@ -167,7 +197,7 @@ const Emitter = struct {
         try self.writer.writeAll(source);
         try self.writer.writeByte(' ');
         try self.writer.writeAll(connector.left);
-        if (edge.label) |label| {
+        if (text) |label| {
             try self.writer.writeAll(" \"");
             try writeLabel(self.writer, label);
             try self.writer.writeAll("\" ");
@@ -342,6 +372,52 @@ fn resolveDirection(ids: *IdTables, diagram: model.Diagram, requested: options.D
         return if (vertical >= 0) .td else .bt;
     }
     return if (horizontal >= 0) .lr else .rl;
+}
+
+/// Infers the direction a group's own contents were drawn in.
+///
+/// Returns null when the group has no internal edges, when an edge crosses its
+/// boundary (Mermaid ignores a subgraph direction in that case), or when the
+/// result matches the direction the group would inherit anyway.
+fn subgraphDirection(
+    ids: *IdTables,
+    group: *const model.Group,
+    edges: []const model.Edge,
+    inherited: options.Direction,
+) ?options.Direction {
+    var horizontal: f32 = 0;
+    var vertical: f32 = 0;
+    var internal: usize = 0;
+
+    for (edges) |edge| {
+        const source_inside = isStrictlyInside(ids, edge.source, group.id);
+        const target_inside = isStrictlyInside(ids, edge.target, group.id);
+        if (source_inside != target_inside) return null;
+        if (!source_inside) continue;
+
+        const source = ids.rects.get(edge.source) orelse continue;
+        const target = ids.rects.get(edge.target) orelse continue;
+        horizontal += target.centerX() - source.centerX();
+        vertical += target.centerY() - source.centerY();
+        internal += 1;
+    }
+
+    if (internal == 0) return null;
+
+    const resolved: options.Direction = if (@abs(vertical) >= @abs(horizontal))
+        (if (vertical >= 0) .td else .bt)
+    else
+        (if (horizontal >= 0) .lr else .rl);
+
+    return if (resolved == inherited) null else resolved;
+}
+
+fn isStrictlyInside(ids: *IdTables, raw_id: []const u8, group_id: []const u8) bool {
+    const path = ids.paths.get(raw_id) orelse return false;
+    for (path) |ancestor| {
+        if (std.mem.eql(u8, ancestor.id, group_id)) return true;
+    }
+    return false;
 }
 
 fn sanitizeId(allocator: std.mem.Allocator, raw: []const u8) Error![]const u8 {
@@ -627,6 +703,100 @@ test "the direction follows the drawing when asked to auto" {
     const text = try renderSample(arena.allocator(), .{ .direction = .auto });
 
     try testing.expect(std.mem.startsWith(u8, text, "flowchart TD\n"));
+}
+
+test "an invisible filler gives label-less edges room" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = testNode("a", "A", .{}) },
+        .{ .node = testNode("b", "B", .{}) },
+    });
+    const edges = try arena.allocator().dupe(model.Edge, &.{
+        .{ .id = "e", .source = "a", .target = "b", .source_arrow = .standard, .target_arrow = .standard },
+    });
+    const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{ .edge_filler = true }, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "a <-- \"#8203;\" --> b") != null);
+}
+
+test "without the filler a label-less edge stays bare" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = testNode("a", "A", .{}) },
+        .{ .node = testNode("b", "B", .{}) },
+    });
+    const edges = try arena.allocator().dupe(model.Edge, &.{
+        .{ .id = "e", .source = "a", .target = "b", .source_arrow = .standard, .target_arrow = .standard },
+    });
+    const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{}, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "a <--> b") != null);
+}
+
+test "a subgraph drawn horizontally gets its own direction" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const inner = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = testNode("g::left", "Left", .{ .x = 0, .y = 0, .width = 10, .height = 10 }) },
+        .{ .node = testNode("g::right", "Right", .{ .x = 200, .y = 0, .width = 10, .height = 10 }) },
+    });
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .group = .{
+            .id = "g",
+            .title = "Sideways",
+            .style = .{},
+            .rect = .{ .x = 0, .y = 0, .width = 300, .height = 50 },
+            .items = inner,
+        } },
+        .{ .node = testNode("top", "Top", .{ .x = 1000, .y = 0, .width = 10, .height = 10 }) },
+        .{ .node = testNode("bottom", "Bottom", .{ .x = 1000, .y = 200, .width = 10, .height = 10 }) },
+    });
+    const edges = try arena.allocator().dupe(model.Edge, &.{
+        .{ .id = "e0", .source = "g::left", .target = "g::right" },
+        .{ .id = "e1", .source = "top", .target = "bottom" },
+    });
+
+    const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{}, &diag);
+
+    try testing.expect(std.mem.startsWith(u8, text, "flowchart TD\n"));
+    try testing.expect(std.mem.indexOf(u8, text, "subgraph g[\"Sideways\"]\n    direction LR\n") != null);
+}
+
+test "a group with a link to the outside keeps the inherited direction" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag = diagnostics.Diagnostics.init(arena.allocator());
+
+    const inner = try arena.allocator().dupe(model.Item, &.{
+        .{ .node = testNode("g::left", "Left", .{ .x = 0, .y = 0, .width = 10, .height = 10 }) },
+        .{ .node = testNode("g::right", "Right", .{ .x = 200, .y = 0, .width = 10, .height = 10 }) },
+    });
+    const items = try arena.allocator().dupe(model.Item, &.{
+        .{ .group = .{
+            .id = "g",
+            .title = "Mixed",
+            .style = .{},
+            .rect = .{ .x = 0, .y = 0, .width = 300, .height = 50 },
+            .items = inner,
+        } },
+        .{ .node = testNode("outside", "Outside", .{ .x = 1000, .y = 200, .width = 10, .height = 10 }) },
+    });
+    const edges = try arena.allocator().dupe(model.Edge, &.{
+        .{ .id = "e0", .source = "g::left", .target = "g::right" },
+        .{ .id = "e1", .source = "g::right", .target = "outside" },
+    });
+
+    const text = try render(arena.allocator(), .{ .items = items, .edges = edges }, .{}, &diag);
+
+    try testing.expect(std.mem.indexOf(u8, text, "direction ") == null);
 }
 
 const paint_properties = [_][]const u8{ "fill", "stroke", "stroke-width", "stroke-dasharray", "color" };
