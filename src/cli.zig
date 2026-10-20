@@ -3,7 +3,7 @@
 const std = @import("std");
 const options = @import("options.zig");
 
-pub const version = "0.1.0";
+pub const version = "0.1.1";
 
 pub const Command = union(enum) {
     help,
@@ -257,6 +257,23 @@ test "help and version are commands of their own" {
 
     try testing.expect(help == .help);
     try testing.expect(version_command == .version);
+}
+
+test "the version the binary reports is the one the package declares" {
+    const metadata = try std.Io.Dir.cwd().readFileAlloc(testing.io, "build.zig.zon", testing.allocator, .limited(64 << 10));
+    defer testing.allocator.free(metadata);
+
+    try testing.expectEqualStrings(version, try declaredVersion(metadata));
+}
+
+/// The `.version` of the package metadata, so a release cannot ship a binary
+/// that still reports the previous number.
+fn declaredVersion(metadata: []const u8) ![]const u8 {
+    const marker = ".version = \"";
+    const opening = std.mem.indexOf(u8, metadata, marker) orelse return error.NoVersionInMetadata;
+    const rest = metadata[opening + marker.len ..];
+    const closing = std.mem.indexOfScalar(u8, rest, '"') orelse return error.UnterminatedVersionInMetadata;
+    return rest[0..closing];
 }
 
 test "--images alone extracts next to the output" {
